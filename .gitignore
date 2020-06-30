@@ -2,7 +2,10 @@
 *.npz
 *.dat
 *.fits
-
+*.fits.gz
+*.csv
+*.txt
+*.zip
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
