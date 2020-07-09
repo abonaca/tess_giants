@@ -671,7 +671,7 @@ def plot_lhood_comparison(i0=0, label='single'):
 
         plt.sca(ax[er][0])
         plt.ylabel('$\Delta\\nu$ [$\mu$Hz]')
-        plt.text(0.1,0.9,row_labels[er], fontsize='small', color='w', zorder=10, transform=plt.gca().transAxes)
+        plt.text(0.1, 0.9, row_labels[er], fontsize='small', color='w', zorder=10, transform=plt.gca().transAxes)
 
     for i in range(3):
         plt.sca(ax[0][i])
@@ -732,6 +732,34 @@ def nfft_comparison():
             pp.savefig(fig)
         
     pp.close()
+
+def lightcurve_comparison():
+    """"""
+    tin = Table.read('../data/aguirre.txt', format='ascii')
+    n = len(tin)
+    label = ['full', 'mock']
+    
+    pp = PdfPages('../plots/mock_lightcurve_comparison.pdf')
+
+    for i in range(n):
+        plt.close()
+        fig, ax = plt.subplots(2,1,figsize=(15,10), sharex=True)
+        row_labels = ['TIC {:d}'.format(tin['TIC'][i]), 'mock {:d}'.format(tin['TIC'][i])]
+        
+        for j in range(2):
+            t = Table(fits.getdata('../data/{:s}_lightcurve/{:016d}.fits'.format(label[j], tin['TIC'][i])))
+            if len(t)>0:
+                plt.sca(ax[j])
+                plt.plot(t['time'], t['flux'], 'k-', lw=0.5, rasterized=True)
+                plt.ylabel('Flux')
+                plt.text(0.03, 0.9, row_labels[j], fontsize='small', zorder=10, transform=plt.gca().transAxes)
+
+        plt.xlabel('Time [days]')
+        plt.tight_layout()
+        pp.savefig(fig)
+        
+    pp.close()
+
 
 # mock data
 
