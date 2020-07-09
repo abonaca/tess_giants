@@ -156,13 +156,16 @@ def ln_profile_like_K_freqs_unpack(ts, ys, yivars, nu, deltanu, K=3):
         A[:, 2 * k + 1] = np.sin(2. * np.pi * f * ts)
     
     A[:, -1] = 1.
-    Asolved = np.linalg.solve(np.dot(A.T * yivars, A), np.dot(A.T * yivars, ys))
+    ayivar = A.T * yivars
+    m = np.dot(ayivar, A)
+    cond = np.linalg.cond(m)
+    
+    Asolved = np.linalg.solve(m, np.dot(ayivar, ys))
     yp = np.dot(A, Asolved)
     resid = ys - yp
     chi2 = -0.5 * np.sum(yivars * resid ** 2)
     
-    return (Asolved, chi2)
-
+    return (Asolved, cond, resid, chi2)
 
 def dnu_numax(numax):
     """Relation for Kepler giants from Yu et al. (2018)"""
@@ -200,25 +203,31 @@ def cross_dnu(K=3, ngrid=400):
     
     amps = np.empty((ngrid, 2*K+1))
     chi2 = np.empty(ngrid)
+    cond = np.empty(ngrid)
     
     for i in range(ngrid):
-        amp, chi = ln_profile_like_K_freqs_unpack(tm, fm, ivar, numax, dfreqs_iday[i], K=K)
+        amp, cond_, resid_, chi = ln_profile_like_K_freqs_unpack(tm, fm, ivar, numax, dfreqs_iday[i], K=K)
         amps[i] = amp
+        cond[i] = cond_
         chi2[i] = chi
     
     plt.close()
-    fig, ax = plt.subplots(2,1,figsize=(12,8), sharex=True)
+    fig, ax = plt.subplots(3,1,figsize=(12,8), sharex=True)
     
     plt.sca(ax[0])
     plt.plot(dfreqs, chi2, 'k-')
     plt.ylabel('ln likelihood')
     
     plt.sca(ax[1])
+    plt.plot(dfreqs, cond, 'k-')
+    plt.ylabel('condition number')
+    
+    plt.sca(ax[2])
     plt.plot(dfreqs, amps, '-')
     plt.ylabel('Amplitudes')
     plt.xlabel('$\Delta\\nu$ [$\mu$Hz]')
     
-    plt.tight_layout()
+    plt.tight_layout(h_pad=0)
     plt.savefig('../plots/cross_section_dnu_K.{:02d}.n.{:03d}.png'.format(K, ngrid))
 
 def cross_numax(K=3, ngrid=400):
@@ -310,6 +319,7 @@ def nfft_highres():
         plt.axvline(numax, ls='-', color='tab:blue')
         plt.axvline(numax-dnu, ls=':', color='tab:blue')
         plt.axvline(numax+dnu, ls=':', color='tab:blue')
+        plt.text(0.05, 0.9, '{:d}'.format(tin['TIC'][i]), transform=plt.gca().transAxes)
         
         plt.xlim(nu_min, nu_max)
         plt.xlabel('Frequency [$\mu$Hz]')
@@ -320,6 +330,70 @@ def nfft_highres():
         
     pp.close()
 
+def jump_residuals(K=3, ngrid=400):
+    tin = Table.read('../data/aguirre_1sec.fits')
+    
+    i0 = 0
+    t = Table(fits.getdata(tin['fname'][i0], ignore_missing_end=True))
+    
+    #print(t['PDCSAP_FLUX'], t['PDCSAP_FLUX_ERR'])
+    
+    tm = t['TIME']
+    fm = t['PDCSAP_FLUX']
+    fm = fm - np.nanmean(fm)
+    ind_finite = np.isfinite(fm)
+    tm = tm[ind_finite]
+    fm = fm[ind_finite]
+    ivar = (t['PDCSAP_FLUX_ERR'][ind_finite])**-2
+    
+    numax = (59*u.uHz).to(u.day**-1).value
+    
+    dnu_min, dnu_max = 6.12, 6.14
+    #freqs = np.linspace(numax_min, numax_max, ngrid)*u.uHz
+    dfreqs = np.linspace(dnu_min, dnu_max, ngrid)*u.Hz
+
+    #freqs_iday = freqs.to(u.day**-1).value
+    dfreqs_iday = dfreqs.to(u.day**-1).value
+    
+    amps = np.empty((ngrid, 2*K+1))
+    chi2 = np.empty(ngrid)
+    cond = np.empty(ngrid)
+    
+    print(np.min(ivar), np.max(ivar), np.median(ivar))
+    
+#def br():
+    for i in range(ngrid):
+        amp, cond_, resid_, chi = ln_profile_like_K_freqs_unpack(tm, fm, ivar, numax, dfreqs_iday[i], K=K)
+        amps[i] = amp
+        cond[i] = cond_
+        chi2[i] = chi
+    
+    # find the jump
+    jump = chi2[1:] - chi2[:-1]
+    ind_jump = jump>1000
+    #ind_jump = np.concatenate([ind_jump, False])
+    indices = np.arange(ngrid, dtype=int)
+    
+    ijump = indices[:-1][ind_jump][0] + 1
+    ipre = ijump - 1
+    
+    amp_pre, cond_pre, resid_pre, chi_pre = ln_profile_like_K_freqs_unpack(tm, fm, ivar, numax, dfreqs_iday[ipre], K=K)
+    amp_jump, cond_jump, resid_jump, chi_jump = ln_profile_like_K_freqs_unpack(tm, fm, ivar, numax, dfreqs_iday[ijump], K=K)
+    
+    print(chi_pre, chi_jump)
+    
+    plt.close()
+    fig, ax = plt.subplots(2,1,figsize=(15,10))
+    
+    plt.sca(ax[0])
+    plt.plot(tm, ivar*resid_pre**2, 'k-')
+    plt.plot(tm, ivar*resid_jump**2, 'r-')
+    
+    plt.sca(ax[1])
+    plt.plot(tm, ivar*(resid_pre**2 - resid_jump**2), 'k-')
+    plt.plot(tm, np.cumsum(ivar*(resid_pre**2 - resid_jump**2)), 'k-', alpha=0.5)
+    
+    plt.tight_layout()
 
 
 def time_frame():
@@ -453,3 +527,232 @@ def plot_lhood_2d():
         plt.tight_layout()
         pp.savefig(fig)
     pp.close()
+    
+
+## multi-sector ##
+
+def full_lightcurve(tic, verbose=True):
+    """"""
+    flist = glob.glob('../data/tess_lightcurve/*{:d}*'.format(tic))
+    
+    tm_full = np.empty(0)
+    fm_full = np.empty(0)
+    flux_full = np.empty(0)
+    ivar_full = np.empty(0)
+    sector_full = np.empty(0)
+    
+    for f in flist:
+        t = Table(fits.getdata(f, ignore_missing_end=True))
+        sector = int(f.split('-')[1][1:])
+        
+        tm = t['TIME']
+        flux = t['PDCSAP_FLUX']
+        fm = flux - np.nanmean(flux)
+        ind_finite = np.isfinite(flux)
+        tm = tm[ind_finite]
+        fm = fm[ind_finite]
+        flux = flux[ind_finite]
+        ivar = (t['PDCSAP_FLUX_ERR'][ind_finite])**-2
+        sector = sector * np.ones(np.sum(ind_finite), dtype=int)
+        
+        tm_full = np.concatenate((tm_full, tm))
+        fm_full = np.concatenate((fm_full, fm))
+        flux_full = np.concatenate((flux_full, flux))
+        ivar_full = np.concatenate((ivar_full, ivar))
+        sector_full = np.concatenate((sector_full, sector))
+    
+    tout = Table([tm_full, fm_full, flux_full, ivar_full, sector_full], names=('time', 'flux', 'flux_raw', 'ivar', 'sector'), dtype=('float', 'float', 'float', 'float', 'int'))
+    if verbose: tout.pprint()
+    tout.write('../data/full_lightcurve/{:016d}.fits'.format(tic), overwrite=True)
+
+def aguirre_full_lightcurves(verbose=True):
+    """"""
+    tin = Table.read('../data/aguirre.txt', format='ascii')
+    tic = tin['TIC']
+    
+    for tic in tin['TIC']:
+        if verbose: print(tic)
+        full_lightcurve(tic, verbose=verbose)
+
+def find_nupeak_dnu_full(single=False, mock=False):
+    """"""
+
+    tin = Table.read('../data/aguirre.txt', format='ascii')
+    n = len(tin)
+    
+    if mock:
+        lclabel = 'mock'
+    else:
+        lclabel = 'full'
+    
+    for i0 in range(20,21):
+        # load lightcurve
+        t = Table(fits.getdata('../data/{:s}_lightcurve/{:016d}.fits'.format(lclabel, tin['TIC'][i0])))
+        if single:
+            ind = t['sector']==np.unique(t['sector'])[0]
+            t = t[ind]
+            label = 'single'
+        else:
+            label = 'full'
+        
+        # expected numax, delta nu
+        numax = tin['numax'][i0]
+        dnu = tin['Delnu'][i0]
+        dnu_est = dnu_numax(numax)
+
+        numax_err = np.sqrt(tin['Stnumax']**2 + tin['Synumax']**2)[i0]
+        dnu_err = np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)[i0]
+
+        # reasonable range to search
+        nsigma = 3
+        numax_min = max(0, numax - nsigma*dnu)
+        numax_max = numax + nsigma*dnu
+        
+        nsigma = 5
+        dnu_min = max(0, dnu - nsigma*dnu_err)
+        dnu_max = dnu + nsigma*dnu_err
+        
+        # frequency grid
+        ngrid = 100
+        freqs = np.linspace(numax_min, numax_max, ngrid)*u.uHz
+        dfreqs = np.linspace(dnu_min, dnu_max, ngrid)*u.Hz
+
+        freqs_iday = freqs.to(u.day**-1).value
+        dfreqs_iday = dfreqs.to(u.day**-1).value
+
+        # 2D likelihood surface for a range of K
+        Klist = [3,5,7]
+        lls = np.zeros((len(Klist), len(dfreqs), len(freqs)))
+
+        for i, f in enumerate(freqs_iday):
+            for j, df in enumerate(dfreqs_iday):
+                for k, K0 in enumerate(Klist):
+                    lls[k, j, i] = ln_profile_like_K_freqs(t['time'], t['flux'], t['ivar'], f, df, K=K0)
+        
+        np.savez('../data/lhood_surface_{:s}_{:09d}_{:s}'.format(label, tin['TIC'][i0], lclabel), freqs=freqs, dfreqs=dfreqs, lls=lls)
+        
+def plot_lhood_comparison(i0=0, label='single'):
+    """"""
+    tin = Table.read('../data/aguirre.txt', format='ascii')
+    n = len(tin)
+
+    Klist = [3,5,7]
+    
+    plt.close()
+    fig, ax = plt.subplots(2,3,figsize=(17,12), sharex=True, sharey=True)
+
+    labels = ['single', 'full']
+    fnames = ['../data/lhood_surface_{:s}_{:09d}.npz'.format(label, tin['TIC'][i0]), '../data/lhood_surface_{:s}_{:09d}_mock.npz'.format(label, tin['TIC'][i0])]
+    row_labels = ['TIC {:d}'.format(tin['TIC'][i0]), 'mock {:d}'.format(tin['TIC'][i0])]
+    
+    for er, fname in enumerate(fnames):
+        fin = np.load(fname)
+        freqs = fin['freqs']*u.uHz
+        dfreqs = fin['dfreqs']*u.uHz
+        lls = fin['lls']
+        
+        vmin, vmax = np.percentile(lls, [1,99])
+        
+        for e in range(3):
+            plt.sca(ax[er][e])
+            numax_err = np.sqrt(tin['Stnumax']**2 + tin['Synumax']**2)[i0]
+            dnu_err = np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)[i0]
+            
+            pe = mpl.patches.Ellipse([tin['numax'][i0], tin['Delnu'][i0]], width=2*numax_err, height=2*dnu_err,
+                                    facecolor='none', edgecolor='r', lw=2, zorder=10)
+            plt.gca().add_patch(pe)
+
+            im = plt.imshow(lls[e], origin='lower', extent=[freqs[0].value, freqs[-1].value, dfreqs[0].value, dfreqs[-1].value], aspect='auto', cmap='viridis', vmin=vmin, vmax=vmax)
+
+            plt.xlim(freqs[0].value, freqs[-1].value)
+            plt.ylim(dfreqs[0].value, dfreqs[-1].value)
+            
+            plt.colorbar()
+
+        plt.sca(ax[er][0])
+        plt.ylabel('$\Delta\\nu$ [$\mu$Hz]')
+        plt.text(0.1,0.9,row_labels[er], fontsize='small', color='w', zorder=10, transform=plt.gca().transAxes)
+
+    for i in range(3):
+        plt.sca(ax[0][i])
+        plt.title('K = {:d}'.format(Klist[i]), fontsize='medium')
+        
+        plt.sca(ax[1][i])
+        plt.xlabel('$\\nu$ [$\mu$Hz]')
+
+    plt.tight_layout()
+    plt.savefig('../plots/lhood2d_comparison_{:s}_{:09d}.png'.format(label, tin['TIC'][i0]))
+
+def nfft_comparison():
+    """"""
+    
+    N = 600
+    eta = 0.01
+    N = int(N/eta)
+    k_iday = (-int(N/2) + np.arange(N))*eta
+    k = (k_iday*u.day**-1).to(u.uHz)
+    
+    tin = Table.read('../data/aguirre.txt', format='ascii')
+    n = len(tin)
+    
+    pp = PdfPages('../plots/aguirre_nfft_comparison.pdf')
+
+    for i in range(n):
+        # load lightcurve
+        t = Table(fits.getdata('../data/full_lightcurve/{:016d}.fits'.format(tin['TIC'][i])))
+        
+        if len(t)>0:
+            ind = t['sector']==np.unique(t['sector'])[0]
+            t1 = t[ind]
+            
+            tables = [t1, t]
+            colors = ['k', 'k']
+            labels = ['1 sector', 'All ({:d}) sectors'.format(np.size(np.unique(t['sector'])))]
+            
+            plt.close()
+            fig, ax = plt.subplots(2,1,figsize=(12,10), sharex=True)
+            
+            for j in range(2):
+                f_lc = nfft.nfft_adjoint(tables[j]['time']*eta, tables[j]['flux'], len(k))
+                amp = np.sqrt(f_lc.real**2 + f_lc.imag**2)
+                
+                plt.sca(ax[j])
+                plt.plot(k, amp, '-', color=colors[j], lw=0.8, label=labels[j])
+            
+                plt.axvline(tin['numax'][i], label='Literature $\\nu_{max}$')
+                plt.ylabel('NFFT Amplitude')
+                plt.text(0.06, 0.9, labels[j], transform=plt.gca().transAxes)
+            
+                #plt.legend(fontsize='small', loc=2)
+                plt.xlim(10,300)
+                plt.gca().set_xscale('log')
+
+            plt.xlabel('Frequency [$\mu$Hz]')
+            plt.tight_layout()
+            pp.savefig(fig)
+        
+    pp.close()
+
+# mock data
+
+def create_mock_lightcurves():
+    """"""
+    
+    tin = Table.read('../data/aguirre.txt', format='ascii')
+    n = len(tin)
+    
+    np.random.seed(1903)
+    
+    for i in range(n):
+        t = Table(fits.getdata('../data/full_lightcurve/{:016d}.fits'.format(tin['TIC'][i])))
+        N = len(t)
+        fmock = np.random.randn(N) / np.sqrt(t['ivar'])
+        
+        tout = t.copy(copy_data=True)
+        tout['flux'] = fmock
+        tout.write('../data/mock_lightcurve/{:016d}.fits'.format(tin['TIC'][i]), overwrite=True)
+        
+        #plt.close()
+        #plt.plot(tout['time'], tout['flux'], 'k-')
+        #plt.tight_layout()
+
