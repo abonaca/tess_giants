@@ -466,7 +466,7 @@ def find_nupeak_dnu():
         # frequency grid
         ngrid = 100
         freqs = np.linspace(numax_min, numax_max, ngrid)*u.uHz
-        dfreqs = np.linspace(dnu_min, dnu_max, ngrid)*u.Hz
+        dfreqs = np.linspace(dnu_min, dnu_max, ngrid)*u.uHz
 
         freqs_iday = freqs.to(u.day**-1).value
         dfreqs_iday = dfreqs.to(u.day**-1).value
@@ -574,7 +574,7 @@ def aguirre_full_lightcurves(verbose=True):
         if verbose: print(tic)
         full_lightcurve(tic, verbose=verbose)
 
-def find_nupeak_dnu_full(single=False, mock=False):
+def find_nupeak_dnu_full(single=False, mock=False, hres=False, fz=1):
     """"""
 
     tin = Table.read('../data/aguirre.txt', format='ascii')
@@ -583,9 +583,9 @@ def find_nupeak_dnu_full(single=False, mock=False):
     if mock:
         lclabel = 'mock'
     else:
-        lclabel = 'full'
+        lclabel = 'tess'
     
-    for i0 in range(20,21):
+    for i0 in range(3,4):
         # load lightcurve
         t = Table(fits.getdata('../data/{:s}_lightcurve/{:016d}.fits'.format(lclabel, tin['TIC'][i0])))
         if single:
@@ -604,24 +604,32 @@ def find_nupeak_dnu_full(single=False, mock=False):
         dnu_err = np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)[i0]
 
         # reasonable range to search
-        nsigma = 3
+        nsigma = fz*3
         numax_min = max(0, numax - nsigma*dnu)
         numax_max = numax + nsigma*dnu
         
-        nsigma = 5
+        nsigma = fz*5
         dnu_min = max(0, dnu - nsigma*dnu_err)
         dnu_max = dnu + nsigma*dnu_err
         
         # frequency grid
-        ngrid = 100
+        if hres:
+            ngrid = 200
+            reslabel = 'hres'
+        else:
+            ngrid = 100
+            reslabel = 'lres'
         freqs = np.linspace(numax_min, numax_max, ngrid)*u.uHz
-        dfreqs = np.linspace(dnu_min, dnu_max, ngrid)*u.Hz
+        dfreqs = np.linspace(dnu_min, dnu_max, ngrid)*u.uHz
 
         freqs_iday = freqs.to(u.day**-1).value
         dfreqs_iday = dfreqs.to(u.day**-1).value
 
+        print(freqs[1]-freqs[0], dfreqs[1]-dfreqs[0])
+        print(freqs_iday[1]-freqs_iday[0], dfreqs_iday[1]-dfreqs_iday[0], 1/(np.max(t['time'])-np.min(t['time'])))
+
         # 2D likelihood surface for a range of K
-        Klist = [3,5,7]
+        Klist = [3,]
         lls = np.zeros((len(Klist), len(dfreqs), len(freqs)))
 
         for i, f in enumerate(freqs_iday):
@@ -629,8 +637,16 @@ def find_nupeak_dnu_full(single=False, mock=False):
                 for k, K0 in enumerate(Klist):
                     lls[k, j, i] = ln_profile_like_K_freqs(t['time'], t['flux'], t['ivar'], f, df, K=K0)
         
-        np.savez('../data/lhood_surface_{:s}_{:09d}_{:s}'.format(label, tin['TIC'][i0], lclabel), freqs=freqs, dfreqs=dfreqs, lls=lls)
-        
+        np.savez('../data/lhood_surface_{:s}_{:09d}_{:s}_{:s}_K{:d}_fz{:.1f}'.format(label, tin['TIC'][i0], lclabel, reslabel, len(Klist), fz), freqs=freqs, dfreqs=dfreqs, lls=lls)
+
+def run_comparison():
+    """"""
+    for single in [True, False]:
+        for mock in [True, False]:
+            print(single, mock)
+            find_nupeak_dnu_full(single=single, mock=mock, hres=True, fz=1)
+
+
 def plot_lhood_comparison(i0=0, label='single'):
     """"""
     tin = Table.read('../data/aguirre.txt', format='ascii')
@@ -639,10 +655,10 @@ def plot_lhood_comparison(i0=0, label='single'):
     Klist = [3,5,7]
     
     plt.close()
-    fig, ax = plt.subplots(2,3,figsize=(17,12), sharex=True, sharey=True)
+    fig, ax = plt.subplots(2,3,figsize=(17,10), sharex=True, sharey=True)
 
     labels = ['single', 'full']
-    fnames = ['../data/lhood_surface_{:s}_{:09d}.npz'.format(label, tin['TIC'][i0]), '../data/lhood_surface_{:s}_{:09d}_mock.npz'.format(label, tin['TIC'][i0])]
+    fnames = ['../data/lhood_surface_{:s}_{:09d}_full.npz'.format(label, tin['TIC'][i0]), '../data/lhood_surface_{:s}_{:09d}_mock.npz'.format(label, tin['TIC'][i0])]
     row_labels = ['TIC {:d}'.format(tin['TIC'][i0]), 'mock {:d}'.format(tin['TIC'][i0])]
     
     for er, fname in enumerate(fnames):
@@ -651,17 +667,16 @@ def plot_lhood_comparison(i0=0, label='single'):
         dfreqs = fin['dfreqs']*u.uHz
         lls = fin['lls']
         
-        vmin, vmax = np.percentile(lls, [1,99])
-        
         for e in range(3):
             plt.sca(ax[er][e])
             numax_err = np.sqrt(tin['Stnumax']**2 + tin['Synumax']**2)[i0]
             dnu_err = np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)[i0]
             
-            pe = mpl.patches.Ellipse([tin['numax'][i0], tin['Delnu'][i0]], width=2*numax_err, height=2*dnu_err,
-                                    facecolor='none', edgecolor='r', lw=2, zorder=10)
+            pe = mpl.patches.Ellipse([tin['numax'][i0], tin['Delnu'][i0]], width=2*numax_err, height=2*dnu_err, facecolor='none', edgecolor='r', lw=2, zorder=10)
             plt.gca().add_patch(pe)
 
+            vmin, vmax = np.percentile(lls[e], [0.1,99.9])
+            
             im = plt.imshow(lls[e], origin='lower', extent=[freqs[0].value, freqs[-1].value, dfreqs[0].value, dfreqs[-1].value], aspect='auto', cmap='viridis', vmin=vmin, vmax=vmax)
 
             plt.xlim(freqs[0].value, freqs[-1].value)
@@ -682,6 +697,76 @@ def plot_lhood_comparison(i0=0, label='single'):
 
     plt.tight_layout()
     plt.savefig('../plots/lhood2d_comparison_{:s}_{:09d}.png'.format(label, tin['TIC'][i0]))
+
+def multi_comparison(i0=20, fz=1, voff=0):
+    """"""
+    
+    tin = Table.read('../data/aguirre.txt', format='ascii')
+    tic = tin['TIC'][i0]
+    numax_err = np.sqrt(tin['Stnumax']**2 + tin['Synumax']**2)[i0]
+    dnu_err = np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)[i0]
+    
+    d = []
+    sectors = ['single', 'full']
+    sources = ['tess', 'mock']
+    
+    for sector in sectors:
+        for source in sources:
+            fname = '../data/lhood_surface_{:s}_{:09d}_{:s}_hres_K1_fz{:.1f}.npz'.format(sector, tic, source, fz)
+            fin = np.load(fname)
+            d += [fin]
+
+    plt.close()
+    fig, ax = plt.subplots(2,2, figsize=(14,12))
+    
+    for i in range(4):
+        freqs = d[i]['freqs']*u.uHz
+        dfreqs = d[i]['dfreqs']*u.uHz
+        lls = d[i]['lls'][0]
+        
+        irow = int(i/2)
+        icol = i%2
+        plt.sca(ax[irow][icol])
+        #print(i, irow, icol)
+        
+        if voff==0:
+            vmin, vmax = np.percentile(lls, [0.1, 99.9])
+        else:
+            vmax = np.max(lls)
+            vmin = vmax - voff
+            
+        #vmin, vmax = np.percentile(lls, [99.89999,99.9])
+        im = plt.imshow(lls, origin='lower', extent=[freqs[0].value, freqs[-1].value, dfreqs[0].value, dfreqs[-1].value], aspect='auto', cmap='viridis', vmin=vmin, vmax=vmax)
+        
+        pe = mpl.patches.Ellipse([tin['numax'][i0], tin['Delnu'][i0]], width=2*numax_err, height=2*dnu_err, facecolor='none', edgecolor='darkorange', lw=2, zorder=10)
+        plt.gca().add_patch(pe)
+        
+        numax_ = np.linspace(freqs[0].value, freqs[-1].value, 100)
+        dnu_ = dnu_numax(numax_)
+        
+        plt.plot(numax_, dnu_, 'r-', lw=2, zorder=10)
+        # 0.85, 1.2
+        for p in [0.95, 1.07]:
+            plt.plot(numax_, p*dnu_, '--', color='r', lw=2, zorder=10)
+        
+        plt.xlim(freqs[0].value, freqs[-1].value)
+        plt.ylim(dfreqs[0].value, dfreqs[-1].value)
+        plt.text(0.05, 0.95, '{:s}'.format(sectors[irow]), fontsize='small', transform=plt.gca().transAxes, color='0.9', va='top')
+        
+        plt.colorbar()
+    
+    for i in range(2):
+        plt.sca(ax[0][i])
+        plt.title('{:s} {:d}'.format(sources[i], tic), fontsize='medium')
+        
+        plt.sca(ax[1][i])
+        plt.xlabel('$\\nu$ [$\mu$Hz]')
+        
+        plt.sca(ax[i][0])
+        plt.ylabel('$\Delta_{\\nu}$ [$\mu$Hz]')
+    
+    plt.tight_layout()
+    plt.savefig('../plots/mock_comparison_{:09d}_fz{:.1f}_voff{:04d}.png'.format(tic, fz, voff))
 
 def nfft_comparison():
     """"""
