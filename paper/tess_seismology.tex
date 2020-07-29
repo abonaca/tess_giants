@@ -1,0 +1,63 @@
+\documentclass[twocolumn]{aastex63}
+
+% typography
+\usepackage[T1]{fontenc}
+\setlength{\parindent}{1.\baselineskip}
+\newcommand{\acronym}[1]{{\small{#1}}}
+\newcommand{\package}[1]{\textsl{#1}}
+\newcommand{\changes}[1]{{\textbf{#1}}}
+
+
+% aastex parameters
+% \received{not yet; THIS IS A DRAFT}
+%\revised{not yet}
+%\accepted{not yet}
+% % Adds "Submitted to " the argument.
+% \submitjournal{ApJ}
+\shorttitle{}
+\shortauthors{bonaca \& hogg}
+
+%@arxiver{}
+\usepackage{amsmath}
+
+\begin{document}\sloppy\sloppypar\raggedbottom\frenchspacing % trust me
+
+\title{Likelihood for the forest of asteroseismic modes}
+
+\correspondingauthor{Ana~Bonaca}
+\email{ana.bonaca@cfa.harvard.edu}
+
+\author[0000-0002-7846-9787]{Ana~Bonaca}
+\affil{Center for Astrophysics | Harvard \& Smithsonian, 60 Garden Street, Cambridge, MA 02138, USA}
+
+\author[0000-0003-2866-9403]{David~W.~Hogg}
+\affiliation{Center for Cosmology and Particle Physics, Department of Physics, New York University}
+\affiliation{Center for Data Science, New York University}
+\affiliation{Max-Planck-Institut f\"ur Astronomie, Heidelberg}
+\affiliation{Center for Computational Astrophysics, Flatiron Institute, 162 Fifth Avenue, NY 10010, USA}
+
+\begin{abstract}\noindent % trust me
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+\section{Likelihood}
+\label{sec:lhood}
+
+
+
+
+\software{
+\package{Astropy} \citep{astropy, astropy:2018},
+\package{IPython} \citep{ipython},
+\package{matplotlib} \citep{mpl},
+\package{numpy} \citep{numpy}
+}
+
+\bibliographystyle{aasjournal}
+\bibliography{tess_seismology}
+
+\end{document}
+
+
