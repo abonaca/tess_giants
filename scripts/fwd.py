@@ -698,7 +698,7 @@ def plot_lhood_comparison(i0=0, label='single'):
     plt.tight_layout()
     plt.savefig('../plots/lhood2d_comparison_{:s}_{:09d}.png'.format(label, tin['TIC'][i0]))
 
-def multi_comparison(i0=20, fz=1, voff=0):
+def multi_comparison(i0=20, fz=1, voff=0, scale=False):
     """"""
     
     tin = Table.read('../data/aguirre.txt', format='ascii')
@@ -754,6 +754,8 @@ def multi_comparison(i0=20, fz=1, voff=0):
         plt.text(0.05, 0.95, '{:s}'.format(sectors[irow]), fontsize='small', transform=plt.gca().transAxes, color='0.9', va='top')
         
         plt.colorbar()
+        if scale:
+            plt.gca().set_aspect('equal')
     
     for i in range(2):
         plt.sca(ax[0][i])
@@ -766,7 +768,7 @@ def multi_comparison(i0=20, fz=1, voff=0):
         plt.ylabel('$\Delta_{\\nu}$ [$\mu$Hz]')
     
     plt.tight_layout()
-    plt.savefig('../plots/mock_comparison_{:09d}_fz{:.1f}_voff{:04d}.png'.format(tic, fz, voff))
+    plt.savefig('../plots/mock_comparison_{:09d}_fz{:.1f}_voff{:04d}_scale{:d}.png'.format(tic, fz, voff, scale))
 
 def nfft_comparison():
     """"""
@@ -869,3 +871,67 @@ def create_mock_lightcurves():
         #plt.plot(tout['time'], tout['flux'], 'k-')
         #plt.tight_layout()
 
+
+
+
+def dnu_profile(i0=20, fz=1):
+    """"""
+    
+    tin = Table.read('../data/aguirre.txt', format='ascii')
+    tic = tin['TIC'][i0]
+    numax_err = np.sqrt(tin['Stnumax']**2 + tin['Synumax']**2)[i0]
+    dnu_err = np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)[i0]
+    
+    d = []
+    sectors = ['single', 'full']
+    sources = ['tess', 'mock']
+
+    for sector in sectors:
+        for source in sources:
+            fname = '../data/lhood_surface_{:s}_{:09d}_{:s}_hres_K1_fz{:.1f}.npz'.format(sector, tic, source, fz)
+            fin = np.load(fname)
+            d += [fin]
+    
+    numax_0 = tin['numax'][i0] - 2*numax_err
+    numax_1 = tin['numax'][i0] + 2*numax_err
+    
+    color = ['k', '0.7']
+    lw = [2, 1]
+    
+    plt.close()
+    plt.figure(figsize=(8,8))
+    
+    for i in range(4):
+        irow = int(i/2)
+        icol = i%2
+        
+        freqs = d[i]['freqs']
+        dfreqs = d[i]['dfreqs']*u.uHz
+        lls = d[i]['lls'][0]
+        
+        numax_0, numax_1 = 71, 75
+        
+        x0 = np.argmin(np.abs(freqs - numax_0))
+        x1 = np.argmin(np.abs(freqs - numax_1))
+        #x0 = 110
+        #x1 = 112
+        print(x0, x1)
+        
+        # lls[dnu, numax]
+        dnu_ = np.mean(lls[:,x0:x1], axis=1)
+        dnu_ = dnu_ - np.min(dnu_)
+        plt.plot(dfreqs[::], dnu_, '-', color=color[icol], lw=lw[irow], label='{:s} {:s}'.format(sources[icol], sectors[irow]))
+        
+        #plt.plot(dfreqs, lls[:,110], '-')
+        #for j in range(0,200,40):
+            #print(freqs[j])
+            #plt.plot(dfreqs, lls[:,j], '-')
+        
+        #plt.plot(freqs, lls[100], '-')
+    
+    plt.xlabel('$\Delta\\nu$ [$\mu$Hz]')
+    plt.ylabel('<$\Delta$ likelihood>')
+    plt.legend(fontsize='small')
+    
+    plt.tight_layout()
+    plt.savefig('../plots/dnu_profile_{:09d}.png'.format(tic))
