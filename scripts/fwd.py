@@ -45,7 +45,7 @@ def find_first_sector():
     to_remove = []
     
     for e, id_ in enumerate(ids[:]):
-        flist = glob.glob('../data/tess_lightcurve/*{:d}*'.format(id_))
+        flist = glob.glob('../data/singletess_lightcurve/*{:d}*'.format(id_))
         if len(flist)>0:
             fnames += [flist[0]]
         else:
@@ -154,18 +154,21 @@ def ln_profile_like_K_freqs_unpack(ts, ys, yivars, nu, deltanu, K=3):
         f = nu - halfK * deltanu + k * deltanu
         A[:, 2 * k]     = np.cos(2. * np.pi * f * ts)
         A[:, 2 * k + 1] = np.sin(2. * np.pi * f * ts)
-    
     A[:, -1] = 1.
+    
+    # uncertainty tensor
     ayivar = A.T * yivars
     m = np.dot(ayivar, A)
-    cond = np.linalg.cond(m)
     
+    # vector
     Asolved = np.linalg.solve(m, np.dot(ayivar, ys))
+    
+    # scalar
     yp = np.dot(A, Asolved)
     resid = ys - yp
     chi2 = -0.5 * np.sum(yivars * resid ** 2)
     
-    return (Asolved, cond, resid, chi2)
+    return (chi2, Asolved, m)
 
 def dnu_numax(numax):
     """Relation for Kepler giants from Yu et al. (2018)"""
@@ -871,9 +874,6 @@ def create_mock_lightcurves():
         #plt.plot(tout['time'], tout['flux'], 'k-')
         #plt.tight_layout()
 
-
-
-
 def dnu_profile(i0=20, fz=1):
     """"""
     
@@ -935,3 +935,6 @@ def dnu_profile(i0=20, fz=1):
     
     plt.tight_layout()
     plt.savefig('../plots/dnu_profile_{:09d}.png'.format(tic))
+
+
+# store likelihood grids
