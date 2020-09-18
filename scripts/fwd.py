@@ -513,13 +513,10 @@ def plot_lhood_2d():
             numax_err = np.sqrt(tin['Stnumax']**2 + tin['Synumax']**2)[i0]
             dnu_err = np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)[i0]
             
-            pe = mpl.patches.Ellipse([tin['numax'][i0], tin['Delnu'][i0]], width=2*numax_err, height=2*dnu_err,
-                                    facecolor='none', edgecolor='r', lw=2, zorder=10)
+            pe = mpl.patches.Ellipse([tin['numax'][i0], tin['Delnu'][i0]], width=2*numax_err, height=2*dnu_err, facecolor='none', edgecolor='r', lw=2, zorder=10)
             plt.gca().add_patch(pe)
 
-            plt.imshow(lls[e], origin='lower',
-                    extent=[freqs[0].value, freqs[-1].value, dfreqs[0].value, dfreqs[-1].value],
-                    aspect='auto', cmap='viridis')
+            plt.imshow(lls[e], origin='lower', extent=[freqs[0].value, freqs[-1].value, dfreqs[0].value, dfreqs[-1].value], aspect='auto', cmap='viridis')
 
             plt.xlim(freqs[0].value, freqs[-1].value)
             plt.ylim(dfreqs[0].value, dfreqs[-1].value)
@@ -940,7 +937,7 @@ def dnu_profile(i0=20, fz=1):
     plt.savefig('../plots/dnu_profile_{:09d}.png'.format(tic))
 
 
-# fit numax
+# fit numax / marginalize nupeak
 
 def find_numax_dnu(mg='mean', filter=False, zoom=False, n_dnu=50):
     """"""
@@ -1077,7 +1074,7 @@ def plot_numax_dnu_lhood(k=0, mg='mean', filter=False, n_dnu=20, zoom=False):
             pe = mpl.patches.Ellipse([tin['numax'][i0], tin['Delnu'][i0]], width=2*numax_err, height=2*dnu_err, facecolor='none', edgecolor='r', lw=2, zorder=10)
             plt.gca().add_patch(pe)
 
-            im = plt.imshow(lls[e], origin='lower', extent=[freqs[0].value, freqs[-1].value, dfreqs[0].value, dfreqs[-1].value], aspect='auto', cmap='viridis')
+            im = plt.imshow(lls[e], origin='lower', extent=[freqs[0].value, freqs[-1].value, dfreqs[0].value, dfreqs[-1].value], aspect='auto', cmap='viridis', vmin=np.max(lls[e])-1000)
 
             plt.xlim(freqs[0].value, freqs[-1].value)
             plt.ylim(dfreqs[0].value, dfreqs[-1].value)
@@ -1157,3 +1154,163 @@ def plot_nupeak_grid(k=0, i0=13, mg='mean', filter=False, n_dnu=20, zoom=False):
     plt.legend(fontsize='small', loc=1, ncol=3)
     
     plt.tight_layout()
+
+
+# search space
+
+def search_grid():
+    """"""
+    tin = Table.read('../data/aguirre_1sec.fits')
+    N = len(tin)
+    
+    numax = np.linspace(0,250,100)
+    dnu = dnu_numax(numax)
+    
+    xerr = 4*tin['Delnu']
+    yerr = 20*np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)
+    
+    xerr = np.ones(N) * 15
+    yerr = np.ones(N) * 3
+    
+    plt.close()
+    plt.figure(figsize=(10,6))
+    
+    plt.plot(numax, dnu, 'r-', lw=4, alpha=0.4)
+    plt.plot(numax, dnu+2.5, 'r-')
+    plt.plot(numax, dnu-2.5, 'r-')
+    plt.plot(numax, dnu*0.9, 'r--')
+    plt.plot(numax, dnu*1.1, 'r--')
+    plt.plot(numax, dnu*0.8, 'r:')
+    plt.plot(numax, dnu*1.2, 'r:')
+    
+    plt.plot(tin['numax'], tin['Delnu'], 'ko')
+    plt.errorbar(tin['numax'], tin['Delnu'], yerr=yerr, xerr=xerr, fmt='none', color='k', alpha=0.4)
+    
+    plt.xlim(0, 220)
+    plt.ylim(0, 20)
+    plt.xlabel('$\\nu_{max}$ [$\mu$Hz]')
+    plt.ylabel('$\Delta\\nu$ [$\mu$Hz]')
+    #plt.gca().set_aspect('equal')
+    
+    plt.tight_layout()
+
+def bandpass_filter(fm):
+    """"""
+    fs = 0.5/(tm[1]-tm[0])
+    flow = (40*u.uHz).to(u.day**-1).value/fs
+    fhigh = (110*u.uHz).to(u.day**-1).value/fs
+    order = 9
+    
+    b, a = butter(order, flow, btype='high', analog=False)
+    fm_band = filtfilt(b, a, fm)
+
+    b, a = butter(order, fhigh, btype='low', analog=False)
+    fm_band = filtfilt(b, a, fm_band)
+    
+    return fm_band
+
+def search(i0=0, K0=5, mg='mean', filter=False):
+    """"""
+    tin = Table.read('../data/aguirre_1sec.fits')
+    
+    # load lightcurve
+    t = Table(fits.getdata(tin['fname'][i0], ignore_missing_end=True))
+    tm = t['TIME']
+    fm = t['PDCSAP_FLUX']
+    fm = (fm - np.nanmean(fm))/np.nanmean(fm)
+    
+    ind_finite = np.isfinite(fm)
+    tm = tm[ind_finite]
+    fm = fm[ind_finite]
+    ivar = (np.ones_like(fm)*1e-8)**-1
+    print(np.size(ivar))
+    
+    # expected numax, delta nu
+    numax = tin['numax'][i0]
+    dnu = tin['Delnu'][i0]
+    
+    # lay down the search grid
+    w_numax = 15
+    w_dnu = 3
+    res_numax = 1
+    res_dnu = 0.1
+    n_numax = int(2*w_numax/res_numax)
+    n_dnu = int(2*w_dnu/res_dnu)
+    
+    freqs = np.linspace(numax-w_numax, numax+w_numax, n_numax)*u.uHz
+    dfreqs = np.linspace(dnu-w_dnu, dnu+w_dnu, n_dnu)*u.uHz
+    print('dnu {:.3f} numax {:.3f}'.format(dfreqs[1]-dfreqs[0], freqs[1]-freqs[0]))
+    
+    freqs_iday = freqs.to(u.day**-1).value
+    dfreqs_iday = dfreqs.to(u.day**-1).value
+    
+    T = (np.max(tm)-np.min(tm))*u.day
+    n_nupeak = int(np.ceil((2*T*(dnu+w_dnu)*u.uHz).decompose()))
+    
+    lls = np.zeros((n_dnu, n_numax))
+    ll_nupeak = np.zeros((n_dnu, n_numax, n_nupeak))
+    
+    # nan grid points outside the search area
+    xv, yv = np.meshgrid(dfreqs, freqs, indexing='ij')
+    dnu_grid = dnu_numax(freqs.value)
+    ind_outside = np.abs(xv.value-dnu_grid)>2.5
+    lls[ind_outside] = np.nan
+    
+    ncall = np.sum(np.isfinite(lls))*n_nupeak
+    time = ncall * 2.4 * 1e-4
+    print(ncall, time)
+    
+    for i, f in enumerate(freqs_iday[:]):
+        for j, df in enumerate(dfreqs_iday[:]):
+            if np.isfinite(lls[j,i]):
+                if mg=='none':
+                    lls[j, i] = ln_profile_like_K_freqs(tm, fm, ivar, f, df, K=K0)
+                else:
+                    # grid in nupeak
+                    ddf = 2*df/n_nupeak
+                    freqs_peak_iday = np.arange(f-df+0.5*ddf, f+df, ddf)
+                    lgrid = np.zeros(n_nupeak)
+                    
+                    # evaluate likelihoods on the nupeak grid
+                    for l, fp in enumerate(freqs_peak_iday):
+                        lgrid[l] = ln_profile_like_K_freqs(tm, fm, ivar, fp, df, K=K0)
+                    ll_nupeak[j, i] = lgrid
+                    
+                    # marginalize over the nupeak grid
+                    if mg=='max':
+                        lls[j, i] = np.max(lgrid)
+                    else:
+                        mg = 'mean'
+                        lls[j, i] = logsumexp(lgrid) - np.log(np.size(lgrid))
+            
+    np.savez('../data/lhood_tic.{:09d}_k.{:d}_mg.{:s}_filter.{:d}'.format(tin['TIC'][i0], K0, mg, filter), freqs=freqs, dfreqs=dfreqs, lls=lls, ll_nupeak=ll_nupeak)
+
+def plot_search(i0=0, K0=5, mg='mean', filter=False):
+    """"""
+    tin = Table.read('../data/aguirre_1sec.fits')
+    fin = np.load('../data/lhood_tic.{:09d}_k.{:d}_mg.{:s}_filter.{:d}.npz'.format(tin['TIC'][i0], K0, mg, filter))
+    freqs = fin['freqs']*u.uHz
+    dfreqs = fin['dfreqs']*u.uHz
+    lls = fin['lls']
+    
+    plt.close()
+    plt.figure(figsize=(8,7))
+    
+    print(np.nanmax(lls))
+    plt.imshow(lls, origin='lower', extent=[freqs[0].value, freqs[-1].value, dfreqs[0].value, dfreqs[-1].value], aspect='auto', cmap='viridis')
+    
+    numax_err = np.sqrt(tin['Stnumax']**2 + tin['Synumax']**2)[i0]
+    dnu_err = np.sqrt(tin['StDelNu']**2 + tin['SyDelNu']**2)[i0]
+    
+    pe = mpl.patches.Ellipse([tin['numax'][i0], tin['Delnu'][i0]], width=2*numax_err, height=2*dnu_err, facecolor='none', edgecolor='r', lw=2, zorder=10)
+    plt.gca().add_patch(pe)
+
+    plt.xlabel('$\\nu_{max}$ [$\mu$Hz]')
+    plt.ylabel('$\Delta\\nu$ [$\mu$Hz]')
+
+    plt.colorbar(label='ln Likelihood')
+
+    plt.tight_layout()
+    plt.savefig('../plots/lhood_tic.{:09d}_k.{:d}_mg.{:s}_filter.{:d}.png'.format(tin['TIC'][i0], K0, mg, filter))
+
+
