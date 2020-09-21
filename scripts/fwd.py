@@ -1194,12 +1194,12 @@ def search_grid():
     
     plt.tight_layout()
 
-def bandpass_filter(fm):
+def bandpass_filter(fm, fmin, fmax, fs, order=9):
     """"""
-    fs = 0.5/(tm[1]-tm[0])
-    flow = (40*u.uHz).to(u.day**-1).value/fs
-    fhigh = (110*u.uHz).to(u.day**-1).value/fs
-    order = 9
+    #fs = 0.5/(tm[1]-tm[0])
+    flow = (fmin*u.uHz).to(u.day**-1).value/fs
+    fhigh = (fmax*u.uHz).to(u.day**-1).value/fs
+    #order = 9
     
     b, a = butter(order, flow, btype='high', analog=False)
     fm_band = filtfilt(b, a, fm)
@@ -1216,6 +1216,7 @@ def search(i0=0, K0=5, mg='mean', filter=False):
     # load lightcurve
     t = Table(fits.getdata(tin['fname'][i0], ignore_missing_end=True))
     tm = t['TIME']
+    fs = 0.5/(tm[1]-tm[0])
     fm = t['PDCSAP_FLUX']
     fm = (fm - np.nanmean(fm))/np.nanmean(fm)
     
@@ -1261,10 +1262,24 @@ def search(i0=0, K0=5, mg='mean', filter=False):
     print(ncall, time)
     
     for i, f in enumerate(freqs_iday[:]):
+        if filter:
+            # these values are in uHz
+            numax_now = freqs[i].value
+            gamma = 0.66 * numax_now**0.88
+            band_width = 2
+            fmin = max(40, numax_now - band_width*gamma)
+            fmax = numax_now + band_width*gamma
+            #print(fmin, fmax)
+            #fmin, fmax = 40, 50
+            
+            fm_ = bandpass_filter(fm, fmin, fmax, fs)
+        else:
+            fm_ = fm
+        
         for j, df in enumerate(dfreqs_iday[:]):
             if np.isfinite(lls[j,i]):
                 if mg=='none':
-                    lls[j, i] = ln_profile_like_K_freqs(tm, fm, ivar, f, df, K=K0)
+                    lls[j, i] = ln_profile_like_K_freqs(tm, fm_, ivar, f, df, K=K0)
                 else:
                     # grid in nupeak
                     ddf = 2*df/n_nupeak
@@ -1273,7 +1288,7 @@ def search(i0=0, K0=5, mg='mean', filter=False):
                     
                     # evaluate likelihoods on the nupeak grid
                     for l, fp in enumerate(freqs_peak_iday):
-                        lgrid[l] = ln_profile_like_K_freqs(tm, fm, ivar, fp, df, K=K0)
+                        lgrid[l] = ln_profile_like_K_freqs(tm, fm_, ivar, fp, df, K=K0)
                     ll_nupeak[j, i] = lgrid
                     
                     # marginalize over the nupeak grid
@@ -1282,7 +1297,7 @@ def search(i0=0, K0=5, mg='mean', filter=False):
                     else:
                         mg = 'mean'
                         lls[j, i] = logsumexp(lgrid) - np.log(np.size(lgrid))
-            
+                #print(lls[j, i])
     np.savez('../data/lhood_tic.{:09d}_k.{:d}_mg.{:s}_filter.{:d}'.format(tin['TIC'][i0], K0, mg, filter), freqs=freqs, dfreqs=dfreqs, lls=lls, ll_nupeak=ll_nupeak)
 
 def plot_search(i0=0, K0=5, mg='mean', filter=False):
