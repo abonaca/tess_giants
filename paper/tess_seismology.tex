@@ -6,6 +6,7 @@
 \setlength{\parindent}{1.\baselineskip}
 \newcommand{\acronym}[1]{{\small{#1}}}
 \newcommand{\package}[1]{\textsl{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\changes}[1]{{\textbf{#1}}}
 \renewcommand{\twocolumngrid}{} % This is evil Hogg stuff right here.
 
@@ -221,8 +222,9 @@ where the $\vtheta$ dependence is explicit, and the $\veta$ dependence
 is implicit through the design matrix $\mM$.
 For actual implementation of this log likelihood, we never construct
 the exceedingly sparse tensor $\tC$ or $\tC\inv$ explicitly, and we
-never call any kind of linear-algebra invert function: The inverse of
-$\tC$ is just the $\diag()$ of the inverses.
+never call any kind of linear-algebra \code{inv()} or \code{logdet()} function:
+The inverse of $\tC$ is just the $\diag()$ of the inverses, and the
+log determinant is just the sum of the logs.
 
 But we know more than just what's encoded in the basic log-likelihood function $\ln L_0$.
 We want to use our knowledge.
@@ -291,10 +293,20 @@ and surface gravity.
 ... and the log likelihood becomes very insensitive to $K$ once $K$ is large enough;
 we set $K=XX$ in all that follows; this is large enough.
 
-... Make $\ln L_2$, marginalized over $\nupeak$ also ...
+... HOGG thinks that we should also set something like
+\begin{align}
+  \Lambda_0 &\leftarrow \frac{H}{(\numax\,T)^2}
+  \quad ,
+\end{align}
+for signal-processing reasons?
+
+... Make $\ln L_2$, fixing $H, \Gamma$ to be deterministic functions of $\numax$
+and marginalized over $\nupeak$  ...
 \begin{align}
   \ln L_2(\numax,\Delta\nu) = \ln \left[\frac{1}{\Delta\nu}\,\int_{\numax-\frac{1}{2}\,\Delta\nu}^{\numax+\frac{1}{2}\,\Delta\nu} \exp\left(\ln L_1(\veta)\right)\,\dd\nupeak\right]
+  \quad ,
 \end{align}
+where ...
 ... implementation notes ...
 
 ... Comment on the odd-frequency modes? ...
