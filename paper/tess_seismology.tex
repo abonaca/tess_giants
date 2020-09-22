@@ -21,11 +21,13 @@
 \newcommand{\scalar}[1]{#1}
 \renewcommand{\vector}[1]{\boldsymbol{#1}}
 \newcommand{\vy}{\vector{y}}
+\newcommand{\valpha}{\vector{\alpha}}
 \newcommand{\veta}{\vector{\eta}}
 \newcommand{\vtheta}{\vector{\theta}}
 \renewcommand{\tensor}[1]{\mathbf{#1}}
 \newcommand{\tB}{\tensor{B}}
 \newcommand{\tC}{\tensor{C}}
+\newcommand{\tK}{\tensor{K}}
 \DeclareMathOperator{\diag}{diag}
 \newcommand{\tLambda}{\tensor{\Lambda}}
 \newcommand{\mat}[1]{\mathsf{#1}}
@@ -310,6 +312,29 @@ where ...
 ... implementation notes ...
 
 ... Comment on the odd-frequency modes? ...
+
+... Finally, if we wanted to include a Gaussian-Process noise model to
+take care of the red noise in the spectrum, we would just add a kernel
+matrix $\tK$ into the marginalized variance tensor $\tB$:
+\begin{align}
+  \tB &= \tC + \tK + \mM\cdot\tLambda\cdot\mM\T
+  \\
+  [\tK]_{nn'} &= q(|t_n - t_n'|; \valpha)
+  \quad ,
+\end{align}
+where $[\tK]_{nn'}$ denotes the $(n, n')$ entry of the matrix $\tK$,
+$q()$ is a kernel function, and $\valpha$ is a vector of hyper-parameters
+controlling the Gaussian process.
+Conceptually this is simple, but in practice it slows things down.
+... That said, DFM has very fast methods; maybe we should do this?
+
+\section{Experiments and results}
+
+foo and bar
+
+\section{Discussion}
+
+Hello World!
 
 \acknowledgments
 It is a pleasure to thank
