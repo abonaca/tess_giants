@@ -7,6 +7,7 @@
 \newcommand{\acronym}[1]{{\small{#1}}}
 \newcommand{\package}[1]{\textsl{#1}}
 \newcommand{\changes}[1]{{\textbf{#1}}}
+\renewcommand{\twocolumngrid}{} % This is evil Hogg stuff right here.
 
 % math
 \newcommand{\nupeak}{\nu_\mathrm{peak}}
@@ -177,12 +178,22 @@ parameters $K, \nupeak, \Delta\nu$, would by itself provide a
 classical-statistics estimate of the large frequency difference
 $\Delta\nu$.
 
-... Optimization notes: Brute force is the only option! And the grid needs
-to be extremely fine ...
+Acting on real data, this likelihood function is a mind-bogglingly complex
+function of the nonlinear parameters.
+For this reason, the only safe optimization method in $\Delta\nu, \nupeak$ is
+brute-force search!
+We perform brute-force search for example light curves  and show the results in XXX
+and YYY.
+For signal-processing reasons, the brute-force grid in grid search must be
+substantially finer than a frequency resolution of $\delta\nu = 1/(K\,T)$ where
+$K$ is the number of modes in the comb, and $T$ is the full time span of the
+light curve data ($T = t_N - t_1$).
+That hurts.
 
 If we define a few linear-algebra operators, we can write the likelihood in a more
 generalizable form.
-If we make a...
+We construct a N-vector (column vector) $\vy$, a diagonal square noise
+variance tensor $\tC$, and a rectangular design matrix $\mM$:
 \begin{align}
   \vy &\equiv \begin{bmatrix} y_1 & y_2 & y_3 & \hdots & y_N \end{bmatrix}\T
   \\
@@ -195,27 +206,28 @@ If we make a...
     \vdots & \vdots         & \vdots              & \vdots              &        & \vdots \\
     1 & \cos(2\pi\nu_1 t_N) & \sin(2\pi\nu_1 t_N) & \cos(2\pi\nu_2 t_N) & \hdots & \sin(2\pi\nu_K t_N) \\
   \end{bmatrix}
-  \quad .
+  \quad ,
 \end{align}
-... then we get ...
+where the $\diag()$ operator makes a diagonal matrix with the inputs down
+the diagonal.
+With these definitions, the basic log likelihood becomes
 \begin{align}
   \ln L_0(\vtheta,\veta) &= -\frac{1}{2}\,[\vy - \mM\cdot\vtheta]\T\cdot\tC\inv\cdot[\vy - \mM\cdot\vtheta] - \frac{1}{2}\ln\det(2\pi\,\tC)
-  \quad .
+  \quad ,
 \end{align}
-...implementation notes: Never construct sparse matrix $\tC$ or its inverse, invert $\tC$ trivially ...
+where the $\vtheta$ dependence is explicit, and the $\veta$ dependence
+is implicit through the design matrix $\mM$.
+For actual implementation of this log likelihood, we never construct
+the exceedingly sparse tensor $\tC$ or $\tC\inv$ explicitly, and we
+never call any kind of linear-algebra invert function: The inverse of
+$\tC$ is just the $\diag()$ of the inverses.
 
 But we know more than just what's encoded in the basic log-likelihood function $\ln L_0$.
 We want to use our knowledge.
 One thing we know is that the amplitudes $\sqrt{a_k^2+b_k^2}$
 are expected to be higher for the
 modes $\nu_k$ closer to the star's characteristic frequecy $\numax$.
-Another is that the mode amplitudes are a function of evolutionary
-state, where evolutionary state can be represented by the characteristic
-frequency $\numax$, or the position of
-the star on the color-magnitude diagram or in the space of temperature
-and surface gravity.
-
-One model for these modes, inspired by the idea that they might be driven
+One model for this, inspired by the idea that they might be driven
 by an effectively Gaussian noise internal to the star, is that the mode
 amplitudes $a_k, b_k$ are drawn independently from a Gaussian with zero
 mean and variance $H_k$ that depends on mode frequency $\nu_k$ as
@@ -226,7 +238,8 @@ mean and variance $H_k$ that depends on mode frequency $\nu_k$ as
 where parameters $H, \numax, \Gamma$ set the height, center, and width of
 the envelope of mode variances, and the frequencies $\nu_k$ are given
 above (\ref{eq:nuk}).
-We can pile these into another diagonal variance tensor $\tLambda$
+We can pile these into another diagonal variance tensor $\tLambda$---this time
+a prior variance not a noise variance
 \begin{align}
   \tLambda &\equiv \diag(\begin{bmatrix} \Lambda_0 & H_1 & H_1 & H_2 & H_2 & \hdots & H_K & H_K \end{bmatrix})
   \quad ,
@@ -235,21 +248,38 @@ where $\Lambda_0$ is a (small) prior variance for the constant term $a_0$.
 Recall that the flux data were normalized to unity and then had unity
 (or a filter??) subtracted, to give them mean zero.
 
-... Make $\ln L_1$, marginalized over linear parameters ... cite Hogg ...
+Once we have set our prior beliefs about the mode amplitudes using $H,
+\numax, \Gamma$, we don't care about the amplitudes' particular values.
+Following \citet{gaussianproduct}, we can marginalize out these amplitudes
+with a closed-form expression to make the
+linear-marginalized log-likelihood function $\ln L_1$:
 \begin{align}
   \ln L_1(\veta) &= -\frac{1}{2}\,\vy\T\cdot\tB\inv\cdot\vy - \frac{1}{2}\ln\det(2\pi\,\tB)
   \\
   \tB &= \tC + \mM\cdot\tLambda\cdot\mM\T
   \\
-  \veta &\equiv \begin{bmatrix} \Delta\nu & \numax & \nupeak & H & \Gamma & K \end{bmatrix}\T
+  \veta &\equiv \begin{bmatrix} \Delta\nu & \numax & \nupeak & H & \Gamma & \Lambda_0 & K \end{bmatrix}\T
   \quad ,
 \end{align}
-where ...
+where $\ln L_1(\veta)$ depends only on the nonlinear parameters $\veta$ because
+the linear parameters $\vtheta$ have been marginalized out,
+$\tB$ is a composite variance tensor taking account both the noise
+and the prior variance, and the nonlinear parameter list $\veta$ just got
+longer.
+Once again, implementation of the expression for $\ln L_1$ is not straightforward:
+We use the matrix inversion lemma and matrix determinant lemma to simplify each
+term to a smaller linear-algebra operation than what's implied by any naive
+implementation.
 
-... Implementation notes: Use matrix inversion and matrix determinant lemmas ...
-
-... Still there are too many nonlinear parameters, so we reduce dimensionality
-using known regularities of stars ...
+Still in the vector $\veta$ there are too many nonlinear parameters for brute-force
+search, so we reduce dimensionality
+using known regularities of stars: 
+Mode amplitudes are a function of evolutionary
+state, where evolutionary state can be represented by the characteristic
+frequency $\numax$, or the position of
+the star on the color-magnitude diagram or in the space of temperature
+and surface gravity.
+...
 \begin{align}
   H &\leftarrow \mbox{some function of $\numax$ here}
   \\
