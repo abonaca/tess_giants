@@ -297,7 +297,8 @@ we set $K=XX$ in all that follows; this is large enough.
 
 ... HOGG thinks that we should also set something like
 \begin{align}
-  \Lambda_0 &\leftarrow \frac{H}{(\numax\,T)^2}
+  \Lambda_0 &\leftarrow \frac{H}{(\numax\,T)^2} \quad\mbox{or}\quad
+                        \frac{H\,\Gamma}{\Delta\nu\,(\numax\,T)^2}
   \quad ,
 \end{align}
 for signal-processing reasons?
@@ -309,12 +310,23 @@ and marginalized over $\nupeak$  ...
   \quad ,
 \end{align}
 where ...
-... implementation notes ...
+... implementation notes ... in addition to all the above, we have to be
+very careful how we construct the $\nupeak$ grid for the numerical marginalization...
 
-... Comment on the odd-frequency modes? ...
+One thing missing in all of the above is that the asteroseismic comb of
+frequencies is not a single comb, as described, but rather two combs, one
+for the even-$\ell$ and one for the odd-$\ell$ modes, with these two combs
+offset from one another and with different expected amplitudes.
+Right now we are simply ignoring this fact, because we don't see how to
+implement both combs without introducing another finely gridded nonlinear
+parameter (the small frequency difference $\delta$) and maybe another
+coarse nonlinear parameter (a ratio of amplitude variances ($H_{\mathrm{odd}}/H$).
+However, since the second set of modes brings significant power,
+the method would almost certainly be improved if we could afford the additional
+parameters. We will return to this below (will we?).
 
-... Finally, if we wanted to include a Gaussian-Process noise model to
-take care of the red noise in the spectrum, we would just add a kernel
+Finally, if we wanted to include a Gaussian-Process noise model to
+take care of the red noise in the spectrum, we would ``just'' add a kernel
 matrix $\tK$ into the marginalized variance tensor $\tB$:
 \begin{align}
   \tB &= \tC + \tK + \mM\cdot\tLambda\cdot\mM\T
@@ -324,9 +336,9 @@ matrix $\tK$ into the marginalized variance tensor $\tB$:
 \end{align}
 where $[\tK]_{nn'}$ denotes the $(n, n')$ entry of the matrix $\tK$,
 $q()$ is a kernel function, and $\valpha$ is a vector of hyper-parameters
-controlling the Gaussian process.
+controlling the height and shape of the kernel.
 Conceptually this is simple, but in practice it slows things down.
-... That said, DFM has very fast methods; maybe we should do this?
+That said, DFM (CITE) has very fast methods; maybe we should do this?
 
 \section{Experiments and results}
 
