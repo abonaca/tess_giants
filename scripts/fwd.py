@@ -15,6 +15,7 @@ from scipy.signal import butter, filtfilt
 import subprocess
 import os
 import glob
+import time
 
 def download_lightcurves():
     """"""
@@ -1329,3 +1330,155 @@ def plot_search(i0=0, K0=5, mg='mean', filter=False):
     plt.savefig('../plots/lhood_tic.{:09d}_k.{:d}_mg.{:s}_filter.{:d}.png'.format(tin['TIC'][i0], K0, mg, filter))
 
 
+# marginalized likelihood (L2)
+
+def lnlike_0(ts, ys, yivars, deltanu, nupeak, K, numax, Lambda0, H, Gamma):
+    """Log Likelihood for a comb of K frequencies centered on nupeak and separated by deltanu (solves for the amplitudes)"""
+    
+    assert len(ts) == len(ys)
+    
+    halfK = (K - 1) // 2
+    thisK = 2 * halfK + 1
+    
+    M = np.zeros((len(ts), 2 * thisK + 1))
+    M[:, 0] = 1.
+    for k in range(thisK):
+        f = nupeak - halfK * deltanu + k * deltanu
+        M[:, 2 * k + 1] = np.cos(2. * np.pi * f * ts)
+        M[:, 2 * k + 2] = np.sin(2. * np.pi * f * ts)
+    
+    theta = np.linalg.solve(np.dot(M.T * yivars, M), np.dot(M.T * yivars, ys))
+    residual = ys - np.dot(M, theta)
+    
+    return -0.5 * np.sum(yivars * residual ** 2) -0.5 * np.sum(np.log(2*np.pi * yivars))
+
+def lnlike_1(ts, ys, yivars, deltanu, nupeak, K, numax, Lambda0, H, Gamma):
+    """Log Likelihood for a comb of K frequencies centered on nupeak and separated by deltanu and amplitudes determined by the bell parameters numax, Lambda0, H and Gamma"""
+    
+    assert len(ts) == len(ys)
+    
+    halfK = (K - 1) // 2
+    thisK = 2 * halfK + 1
+    
+    M = np.zeros((len(ts), 2 * thisK + 1))
+    M[:, 0] = 1.
+    for k in range(thisK):
+        f = nupeak - halfK * deltanu + k * deltanu
+        M[:, 2 * k + 1] = np.cos(2. * np.pi * f * ts)
+        M[:, 2 * k + 2] = np.sin(2. * np.pi * f * ts)
+    
+    L = np.zeros(2*thisK + 1)
+    L[0] = Lambda0
+    for k in range(thisK):
+        f = nupeak - halfK * deltanu + k * deltanu
+        h = H * np.exp(-(f - numax)**2/Gamma**2)
+        L[2*k + 1] = h
+        L[2*k + 2] = h
+    #L = np.diag(L)
+    
+    B = np.diag(yivars**-1) + np.dot(M*L, M.T)
+    
+    
+    # inverse
+    I = np.eye(len(yivars))
+    #t1 = time.time()*u.s
+    #Binv = np.linalg.inv(B)
+    #t2 = time.time()*u.s
+    #print(I)
+    #print(np.dot(Binv,B), np.allclose(np.dot(Binv,B), I, atol=1e-5))
+    
+    Binv_fast = lemma_inv(B, M, yivars, L)
+    print(np.dot(Binv_fast,B), np.allclose(np.dot(Binv_fast,B), I))
+    
+    # determinant
+    #t1 = time.time()*u.s
+    #s, logdetB = np.linalg.slogdet(B)
+    #assert s==1, 'det B should be positive'
+    #t2 = time.time()*u.s
+    
+    #logdetB_fast = lemma_logdet(B, M, yivars, L)
+    #t3 = time.time()*u.s
+    #print((t2-t1), (t3-t2))
+    
+    #print(logdetB, logdetB_fast)
+    #print(np.allclose(logdetB, logdetB_fast))
+    
+    
+    
+    #lnl = -0.5 * np.dot(np.dot(ys,Binv),ys)
+    
+    return 0
+
+def lemma_inv(B, M, yivars, L):
+    """Use matrix inversion lemma to calculate the inverse of B = C + M L M.T"""
+    
+    Cinv = np.diag(yivars)
+    MCinv = M.T*yivars
+    
+    S = np.diag(L**-1) + np.dot(M.T * yivars, M)
+    Sinv = np.linalg.inv(S)
+    print(np.shape(Sinv), np.shape(MCinv))
+    
+    #D_ = Cinv.dot(M).dot(Sinv).dot(M.T).dot(Cinv)
+    #D_ = np.linalg.multi_dot([Cinv, M, Sinv, M.T, Cinv])
+    #print(np.allclose(D, D_, rtol=1e-3, atol=1e-3))
+    
+    Binv = Cinv - D
+    
+    return Binv
+
+def lemma_logdet(B, M, yivars, L):
+    """Use matrix determinant lemma to calculate the log determinant of B = C + M L M.T"""
+    
+    S = np.dot(M.T * yivars, M) * L
+    d = np.einsum('ii->i', S)
+    d += 1
+    
+    s, logdetS = np.linalg.slogdet(S)
+    assert s==1
+    
+    logdetC_fast = np.sum(np.log(yivars**-1))
+    #s, logdetC = np.linalg.slogdet(np.diag(yivars**-1))
+    #assert s==1
+    #print(logdetC, logdetC_fast, np.allclose(logdetC, logdetC_fast))
+    
+    logdetB = logdetS + logdetC_fast
+    
+    return logdetB
+
+def test_l1(i0=0):
+    """"""
+    tin = Table.read('../data/aguirre_1sec.fits')
+    
+    # load lightcurve
+    t = Table(fits.getdata(tin['fname'][i0], ignore_missing_end=True))
+    tm = t['TIME']
+    fs = 0.5/(tm[1]-tm[0])
+    fm = t['PDCSAP_FLUX']
+    fm = (fm - np.nanmean(fm))/np.nanmean(fm)
+    
+    ind_finite = np.isfinite(fm)
+    tm = tm[ind_finite][:5]
+    fm = fm[ind_finite][:5]
+    ivar = (np.ones_like(fm)*1e-8)**-1
+    print(np.size(ivar))
+    
+    dnu_uhz = 10*u.uHz
+    nupeak_uhz = 60*u.uHz
+    numax_uhz = 60*u.uHz
+    K = 5
+    Lambda0 = 0
+    H = 10
+    Gamma_uhz = 15*u.uHz
+    
+    dnu = dnu_uhz.to(u.day**-1).value
+    nupeak = nupeak_uhz.to(u.day**-1).value
+    numax = numax_uhz.to(u.day**-1).value
+    Gamma = Gamma_uhz.to(u.day**-1).value
+    
+    l = lnlike_1(tm, fm, ivar, dnu, nupeak, K, numax, Lambda0, H, Gamma)
+    print(H, l)
+    
+    #for H in np.logspace(-1,3,10):
+        #l = lnlike_1(tm, fm, ivar, dnu, nupeak, K, numax, Lambda0, H, Gamma)
+        #print(H, l)
