@@ -1384,13 +1384,23 @@ def lnlike_1(ts, ys, yivars, deltanu, nupeak, K, numax, Lambda0, H, Gamma):
     #t1 = time.time()*u.s
     #Binv = np.linalg.inv(B)
     #t2 = time.time()*u.s
-    #print(I)
+    ##print(Binv)
     #print(np.dot(Binv,B), np.allclose(np.dot(Binv,B), I, atol=1e-5))
     
+    t1 = time.time()*u.s
     Binv_fast = lemma_inv(B, M, yivars, L)
-    print(np.dot(Binv_fast,B), np.allclose(np.dot(Binv_fast,B), I))
+    t2 = time.time()*u.s
+    print(t2-t1)
+
+    #print(Binv_fast)
+    #print(np.allclose(Binv, Binv_fast, atol=1e2))
+    #print(np.dot(Binv_fast,B), np.allclose(np.dot(Binv_fast,B), I))
     
-    # determinant
+    #print(Binv - Binv_fast)
+    #print(np.linalg.cond(B))
+    #print(np.linalg.cond(np.dot(M.T * yivars**-1, M)))
+    
+    ## determinant
     #t1 = time.time()*u.s
     #s, logdetB = np.linalg.slogdet(B)
     #assert s==1, 'det B should be positive'
@@ -1417,7 +1427,8 @@ def lemma_inv(B, M, yivars, L):
     
     S = np.diag(L**-1) + np.dot(M.T * yivars, M)
     Sinv = np.linalg.inv(S)
-    print(np.shape(Sinv), np.shape(MCinv))
+    
+    D = np.linalg.multi_dot([MCinv.T, Sinv, MCinv])
     
     #D_ = Cinv.dot(M).dot(Sinv).dot(M.T).dot(Cinv)
     #D_ = np.linalg.multi_dot([Cinv, M, Sinv, M.T, Cinv])
@@ -1457,9 +1468,19 @@ def test_l1(i0=0):
     fm = t['PDCSAP_FLUX']
     fm = (fm - np.nanmean(fm))/np.nanmean(fm)
     
+    
+    
     ind_finite = np.isfinite(fm)
-    tm = tm[ind_finite][:5]
-    fm = fm[ind_finite][:5]
+    tm = tm[ind_finite]
+    fm = fm[ind_finite]
+    
+    all_ind = np.arange(len(fm), dtype=int)
+    np.random.seed(183)
+    ind_rand = np.random.choice(all_ind, size=10000)
+    #ind_rand = np.arange(100, dtype=int)
+    tm = tm[ind_rand]
+    fm = fm[ind_rand]
+    
     ivar = (np.ones_like(fm)*1e-8)**-1
     print(np.size(ivar))
     
