@@ -1400,24 +1400,24 @@ def lnlike_1(ts, ys, yivars, deltanu, nupeak, K, numax, Lambda0, H, Gamma):
     #print(np.linalg.cond(B))
     #print(np.linalg.cond(np.dot(M.T * yivars**-1, M)))
     
-    ## determinant
+    # determinant
     #t1 = time.time()*u.s
     #s, logdetB = np.linalg.slogdet(B)
     #assert s==1, 'det B should be positive'
-    #t2 = time.time()*u.s
     
-    #logdetB_fast = lemma_logdet(B, M, yivars, L)
-    #t3 = time.time()*u.s
-    #print((t2-t1), (t3-t2))
+    t2 = time.time()*u.s
+    logdetB_fast = lemma_logdet(B, M, yivars, L)
+    t3 = time.time()*u.s
+    print((t3-t2))
     
     #print(logdetB, logdetB_fast)
     #print(np.allclose(logdetB, logdetB_fast))
     
     
     
-    #lnl = -0.5 * np.dot(np.dot(ys,Binv),ys)
+    lnl = -0.5 * np.dot(np.dot(ys,Binv_fast),ys) - 0.5*logdetB_fast - 0.5*np.log(2*np.pi)
     
-    return 0
+    return lnl
 
 def lemma_inv(B, M, yivars, L):
     """Use matrix inversion lemma to calculate the inverse of B = C + M L M.T"""
@@ -1457,7 +1457,7 @@ def lemma_logdet(B, M, yivars, L):
     
     return logdetB
 
-def test_l1(i0=0):
+def test_l1(i0=0, K=5):
     """"""
     tin = Table.read('../data/aguirre_1sec.fits')
     
@@ -1469,17 +1469,16 @@ def test_l1(i0=0):
     fm = (fm - np.nanmean(fm))/np.nanmean(fm)
     
     
-    
     ind_finite = np.isfinite(fm)
     tm = tm[ind_finite]
     fm = fm[ind_finite]
     
-    all_ind = np.arange(len(fm), dtype=int)
-    np.random.seed(183)
-    ind_rand = np.random.choice(all_ind, size=10000)
-    #ind_rand = np.arange(100, dtype=int)
-    tm = tm[ind_rand]
-    fm = fm[ind_rand]
+    #all_ind = np.arange(len(fm), dtype=int)
+    #np.random.seed(183)
+    #ind_rand = np.random.choice(all_ind, size=10000)
+    ##ind_rand = np.arange(100, dtype=int)
+    #tm = tm[ind_rand]
+    #fm = fm[ind_rand]
     
     ivar = (np.ones_like(fm)*1e-8)**-1
     print(np.size(ivar))
@@ -1487,7 +1486,6 @@ def test_l1(i0=0):
     dnu_uhz = 10*u.uHz
     nupeak_uhz = 60*u.uHz
     numax_uhz = 60*u.uHz
-    K = 5
     Lambda0 = 0
     H = 10
     Gamma_uhz = 15*u.uHz
@@ -1497,8 +1495,10 @@ def test_l1(i0=0):
     numax = numax_uhz.to(u.day**-1).value
     Gamma = Gamma_uhz.to(u.day**-1).value
     
+    t1 = time.time()*u.s
     l = lnlike_1(tm, fm, ivar, dnu, nupeak, K, numax, Lambda0, H, Gamma)
-    print(H, l)
+    t2 = time.time()*u.s
+    print(H, l, t2-t1)
     
     #for H in np.logspace(-1,3,10):
         #l = lnlike_1(tm, fm, ivar, dnu, nupeak, K, numax, Lambda0, H, Gamma)
